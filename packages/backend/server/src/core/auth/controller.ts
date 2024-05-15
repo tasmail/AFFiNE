@@ -21,6 +21,7 @@ import {
   Throttle,
   URLHelper,
 } from '../../fundamentals';
+import { Captcha } from '../../plugins/captcha/guard';
 import { UserService } from '../user';
 import { validators } from '../utils/validators';
 import { CurrentUser } from './current-user';
@@ -52,6 +53,7 @@ export class AuthController {
   ) {}
 
   @Public()
+  @Captcha()
   @Post('/sign-in')
   @Header('content-type', 'application/json')
   async signIn(
@@ -99,7 +101,7 @@ export class AuthController {
     }
   }
 
-  async sendSignInEmail(
+  private async sendSignInEmail(
     { email, signUp }: { email: string; signUp: boolean },
     redirectUri: string
   ) {
