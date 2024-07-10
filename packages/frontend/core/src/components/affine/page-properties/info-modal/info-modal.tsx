@@ -39,7 +39,19 @@ export const InfoModal = ({
   workspace: Workspace;
 }) => {
   const titleInputHandleRef = useRef<InlineEditHandle>(null);
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
+
   const manager = usePagePropertiesManager(page);
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        hiddenInputRef.current?.focus();
+      }
+      onOpenChange(open);
+    },
+    [onOpenChange]
+  );
   const handleClose = useCallback(() => {
     onOpenChange(false);
   }, [onOpenChange]);
@@ -63,7 +75,7 @@ export const InfoModal = ({
         'aria-describedby': undefined,
       }}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
       withoutCloseButton
     >
       <Scrollable.Root>
@@ -71,6 +83,11 @@ export const InfoModal = ({
           className={styles.viewport}
           data-testid="info-modal"
         >
+          <input
+            type="text"
+            ref={hiddenInputRef}
+            className={styles.hiddenInput}
+          />
           <div className={styles.titleContainer} data-testid="info-modal-title">
             <BlocksuiteHeaderTitle
               className={styles.titleStyle}
