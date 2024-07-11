@@ -12,7 +12,17 @@ import {
   useService,
   type Workspace,
 } from '@toeverything/infra';
-import { Suspense, useCallback, useContext, useMemo, useRef } from 'react';
+import { assignInlineVars } from '@vanilla-extract/dynamic';
+import clsx from 'clsx';
+import {
+  Suspense,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
+import { useTransition } from 'react-transition-state';
 
 import { BlocksuiteHeaderTitle } from '../../../blocksuite/block-suite-header/title';
 import { managerContext } from '../common';
@@ -27,6 +37,8 @@ import * as styles from './info-modal.css';
 import { TagsRow } from './tags-row';
 import { TimeRow } from './time-row';
 
+const animationTimeout = 120;
+
 export const InfoModal = ({
   open,
   onOpenChange,
@@ -39,19 +51,17 @@ export const InfoModal = ({
   workspace: Workspace;
 }) => {
   const titleInputHandleRef = useRef<InlineEditHandle>(null);
-  const hiddenInputRef = useRef<HTMLInputElement>(null);
+
+  const [{ status }, toggle] = useTransition({
+    timeout: animationTimeout,
+  });
+
+  useEffect(() => {
+    toggle(open);
+  }, [open, toggle]);
 
   const manager = usePagePropertiesManager(page);
 
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        hiddenInputRef.current?.focus();
-      }
-      onOpenChange(open);
-    },
-    [onOpenChange]
-  );
   const handleClose = useCallback(() => {
     onOpenChange(false);
   }, [onOpenChange]);
@@ -70,12 +80,21 @@ export const InfoModal = ({
 
   return (
     <Modal
-      contentOptions={{
-        className: styles.container,
-        'aria-describedby': undefined,
+      overlayOptions={{
+        className: clsx(styles.overlay, status),
+        style: assignInlineVars({
+          [styles.animationTimeout]: `${animationTimeout}ms`,
+        }),
       }}
-      open={open}
-      onOpenChange={handleOpenChange}
+      contentOptions={{
+        className: clsx(styles.container, status),
+        'aria-describedby': undefined,
+        style: assignInlineVars({
+          [styles.animationTimeout]: `${animationTimeout}ms`,
+        }),
+      }}
+      open={status !== 'exited'}
+      onOpenChange={onOpenChange}
       withoutCloseButton
     >
       <Scrollable.Root>
@@ -83,11 +102,6 @@ export const InfoModal = ({
           className={styles.viewport}
           data-testid="info-modal"
         >
-          <input
-            type="text"
-            ref={hiddenInputRef}
-            className={styles.hiddenInput}
-          />
           <div className={styles.titleContainer} data-testid="info-modal-title">
             <BlocksuiteHeaderTitle
               className={styles.titleStyle}
