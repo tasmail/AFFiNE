@@ -10,7 +10,8 @@ import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { assignInlineVars } from '@vanilla-extract/dynamic';
 import clsx from 'clsx';
 import type { CSSProperties } from 'react';
-import { forwardRef, useCallback } from 'react';
+import { forwardRef, useCallback, useEffect } from 'react';
+import { useTransition } from 'react-transition-state';
 
 import type { IconButtonProps } from '../button';
 import { IconButton } from '../button';
@@ -28,7 +29,8 @@ export interface ModalProps extends DialogProps {
    * @default false
    */
   persistent?: boolean;
-
+  // animation for modal open/close
+  animationTimeout?: number;
   portalOptions?: DialogPortalProps;
   contentOptions?: DialogContentProps;
   overlayOptions?: DialogOverlayProps;
@@ -57,8 +59,10 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
       withoutCloseButton = false,
       modal,
       persistent,
-
+      animationTimeout = 120,
       portalOptions,
+      open: customOpen,
+      onOpenChange: customOnOpenChange,
       contentOptions: {
         style: contentStyle,
         className: contentClassName,
@@ -68,6 +72,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
       } = {},
       overlayOptions: {
         className: overlayClassName,
+        style: overlayStyle,
         ...otherOverlayOptions
       } = {},
       closeButtonOptions = {},
@@ -76,11 +81,44 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
     },
     ref
   ) => {
+    const [{ status }, toggle] = useTransition({
+      timeout: animationTimeout,
+    });
+    useEffect(() => {
+      toggle(customOpen);
+    }, [customOpen]);
+
+    const handleOpenChange = useCallback(
+      (open: boolean) => {
+        if (!open) {
+          toggle(open);
+          const timeout = setTimeout(() => {
+            customOnOpenChange?.(open);
+          }, animationTimeout);
+          return () => clearTimeout(timeout);
+        }
+        return customOnOpenChange?.(open);
+      },
+      [animationTimeout, customOnOpenChange]
+    );
+
     return (
-      <Dialog.Root modal={modal} {...props}>
+      <Dialog.Root
+        modal={modal}
+        open={status !== 'exited'}
+        onOpenChange={handleOpenChange}
+        {...props}
+      >
         <Dialog.Portal {...portalOptions}>
           <Dialog.Overlay
             className={clsx(styles.modalOverlay, overlayClassName)}
+            data-state={status}
+            style={{
+              ...assignInlineVars({
+                [styles.animationTimeout]: `${animationTimeout}ms`,
+              }),
+              ...overlayStyle,
+            }}
             {...otherOverlayOptions}
           />
           <div data-modal={modal} className={clsx(styles.modalContentWrapper)}>
@@ -100,11 +138,13 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
                 [onEscapeKeyDown, persistent]
               )}
               className={clsx(styles.modalContent, contentClassName)}
+              data-state={status}
               style={{
                 ...assignInlineVars({
                   [styles.widthVar]: getVar(width, '50vw'),
                   [styles.heightVar]: getVar(height, 'unset'),
                   [styles.minHeightVar]: getVar(minHeight, '26px'),
+                  [styles.animationTimeout]: `${animationTimeout}ms`,
                 }),
                 ...contentStyle,
               }}
