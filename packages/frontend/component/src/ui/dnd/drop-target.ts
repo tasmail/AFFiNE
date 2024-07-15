@@ -52,6 +52,8 @@ export type DropTargetDragEvent<D extends DNDData> = Parameters<
   source: { data: D['draggable'] };
 };
 
+export type DropTargetTreeInstruction = Instruction;
+
 export interface DropTargetOptions<D extends DNDData = DNDData> {
   data?: DropTargetGet<D['dropTarget'], D>;
   canDrop?: DropTargetGet<boolean, D>;
@@ -80,8 +82,26 @@ export const useDropTarget = <D extends DNDData = DNDData>(
     null
   );
   const [closestEdge, setClosestEdge] = useState<Edge | null>(null);
+  const [dropEffect, setDropEffect] = useState<'copy' | 'link' | 'move' | null>(
+    null
+  );
+  const [draggedOverDraggable, setDraggedOverDraggable] = useState<{
+    data: D['draggable'];
+  } | null>(null);
+  const [draggedOverPosition, setDraggedOverPosition] = useState<{
+    /**
+     * relative position to the drop target element top-left corner
+     */
+    relativeX: number;
+    relativeY: number;
+    clientX: number;
+    clientY: number;
+  }>({ relativeX: 0, relativeY: 0, clientX: 0, clientY: 0 });
 
   const enableDraggedOver = useRef(false);
+  const enableDraggedOverDraggable = useRef(false);
+  const enableDraggedOverPosition = useRef(false);
+  const enableDropEffect = useRef(false);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = useMemo(getOptions, deps);
@@ -99,11 +119,28 @@ export const useDropTarget = <D extends DNDData = DNDData>(
         if (enableDraggedOver.current) {
           setDraggedOver(false);
         }
+        if (enableDraggedOverDraggable.current) {
+          setDraggedOverDraggable(null);
+        }
+        if (enableDraggedOverPosition.current) {
+          setDraggedOverPosition({
+            relativeX: 0,
+            relativeY: 0,
+            clientX: 0,
+            clientY: 0,
+          });
+        }
         if (options.treeInstruction) {
           setTreeInstruction(null);
+          if (dropTargetRef.current) {
+            delete dropTargetRef.current.dataset['treeInstruction'];
+          }
         }
         if (options.closestEdge) {
           setClosestEdge(null);
+        }
+        if (enableDropEffect.current) {
+          setDropEffect(null);
         }
         if (dropTargetRef.current) {
           delete dropTargetRef.current.dataset['draggedOver'];
@@ -141,43 +178,115 @@ export const useDropTarget = <D extends DNDData = DNDData>(
           : withInstruction;
         return withClosestEdge;
       },
-      onDragEnter: () => {
-        if (enableDraggedOver.current) {
-          setDraggedOver(true);
-        }
-        if (dropTargetRef.current) {
-          dropTargetRef.current.dataset['draggedOver'] = 'true';
-        }
-      },
       onDrag: args => {
-        let instruction = null;
-        let closestEdge = null;
-        if (options.treeInstruction) {
-          instruction = extractInstruction(args.self.data);
-          setTreeInstruction(instruction);
+        if (
+          args.location.current.dropTargets[0]?.element ===
+          dropTargetRef.current
+        ) {
+          if (enableDraggedOverDraggable.current) {
+            setDraggedOverDraggable({ data: args.source.data });
+          }
+          let instruction = null;
+          let closestEdge = null;
+          if (options.treeInstruction) {
+            instruction = extractInstruction(args.self.data);
+            setTreeInstruction(instruction);
+            if (dropTargetRef.current) {
+              dropTargetRef.current.dataset['treeInstruction'] =
+                instruction?.type;
+            }
+          }
+          if (options.closestEdge) {
+            closestEdge = extractClosestEdge(args.self.data);
+            setClosestEdge(closestEdge);
+          }
+          if (enableDropEffect.current) {
+            setDropEffect(args.self.dropEffect);
+          }
+          if (enableDraggedOverPosition.current) {
+            const rect = args.self.element.getBoundingClientRect();
+            setDraggedOverPosition({
+              relativeX: args.location.current.input.clientX - rect.x,
+              relativeY: args.location.current.input.clientY - rect.y,
+              clientX: args.location.current.input.clientX,
+              clientY: args.location.current.input.clientY,
+            });
+          }
+          options.onDrag?.({
+            ...args,
+            treeInstruction: instruction,
+            closestEdge,
+          } as DropTargetDropEvent<D>);
         }
-        if (options.closestEdge) {
-          closestEdge = extractClosestEdge(args.self.data);
-          setClosestEdge(closestEdge);
-        }
-        options.onDrag?.({
-          ...args,
-          treeInstruction: instruction,
-          closestEdge,
-        } as DropTargetDropEvent<D>);
       },
-      onDragLeave: () => {
-        if (enableDraggedOver.current) {
-          setDraggedOver(false);
-        }
-        if (options.treeInstruction) {
-          setTreeInstruction(null);
-        }
-        if (options.closestEdge) {
-          setClosestEdge(null);
-        }
-        if (dropTargetRef.current) {
-          delete dropTargetRef.current.dataset['draggedOver'];
+      onDropTargetChange: args => {
+        if (
+          args.location.current.dropTargets[0]?.element ===
+          dropTargetRef.current
+        ) {
+          if (enableDraggedOver.current) {
+            setDraggedOver(true);
+          }
+          if (options.treeInstruction) {
+            const instruction = extractInstruction(args.self.data);
+            setTreeInstruction(instruction);
+            if (dropTargetRef.current) {
+              dropTargetRef.current.dataset['treeInstruction'] =
+                instruction?.type;
+            }
+          }
+          if (options.closestEdge) {
+            const closestEdge = extractClosestEdge(args.self.data);
+            setClosestEdge(closestEdge);
+          }
+          if (enableDropEffect.current) {
+            setDropEffect(args.self.dropEffect);
+          }
+          if (enableDraggedOverDraggable.current) {
+            setDraggedOverDraggable({ data: args.source.data });
+          }
+          if (enableDraggedOverPosition.current) {
+            const rect = args.self.element.getBoundingClientRect();
+            setDraggedOverPosition({
+              relativeX: args.location.current.input.clientX - rect.x,
+              relativeY: args.location.current.input.clientY - rect.y,
+              clientX: args.location.current.input.clientX,
+              clientY: args.location.current.input.clientY,
+            });
+          }
+          if (dropTargetRef.current) {
+            dropTargetRef.current.dataset['draggedOver'] = 'true';
+          }
+        } else {
+          if (enableDraggedOver.current) {
+            setDraggedOver(false);
+          }
+          if (enableDraggedOverDraggable.current) {
+            setDraggedOverDraggable(null);
+          }
+          if (options.treeInstruction) {
+            setTreeInstruction(null);
+            if (dropTargetRef.current) {
+              delete dropTargetRef.current.dataset['treeInstruction'];
+            }
+          }
+          if (enableDropEffect.current) {
+            setDropEffect(args.self.dropEffect);
+          }
+          if (enableDraggedOverPosition.current) {
+            setDraggedOverPosition({
+              relativeX: 0,
+              relativeY: 0,
+              clientX: 0,
+              clientY: 0,
+            });
+          }
+          if (options.closestEdge) {
+            setClosestEdge(null);
+          }
+          if (dropTargetRef.current) {
+            delete dropTargetRef.current.dataset['draggedOver'];
+          }
         }
       },
     });
@@ -188,6 +297,18 @@ export const useDropTarget = <D extends DNDData = DNDData>(
     get draggedOver() {
       enableDraggedOver.current = true;
       return draggedOver;
+    },
+    get draggedOverDraggable() {
+      enableDraggedOverDraggable.current = true;
+      return draggedOverDraggable;
+    },
+    get draggedOverPosition() {
+      enableDraggedOverPosition.current = true;
+      return draggedOverPosition;
+    },
+    get dropEffect() {
+      enableDropEffect.current = true;
+      return dropEffect;
     },
     treeInstruction,
     closestEdge,

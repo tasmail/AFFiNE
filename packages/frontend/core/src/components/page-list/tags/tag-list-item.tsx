@@ -1,13 +1,11 @@
 import { Checkbox } from '@affine/component';
-import { getDNDId } from '@affine/core/hooks/affine/use-global-dnd-helper';
 import { WorkbenchLink } from '@affine/core/modules/workbench';
 import { useI18n } from '@affine/i18n';
-import { useDraggable } from '@dnd-kit/core';
 import type { PropsWithChildren } from 'react';
 import { useCallback, useMemo } from 'react';
 
 import { selectionStateAtom, useAtom } from '../scoped-atoms';
-import type { DraggableTitleCellData, TagListItemProps } from '../types';
+import type { TagListItemProps } from '../types';
 import { ColWrapper, stopPropagation } from '../utils';
 import * as styles from './tag-list-item.css';
 
@@ -83,28 +81,21 @@ const TagListOperationsCell = ({
 };
 
 export const TagListItem = (props: TagListItemProps) => {
-  const tagTitleElement = useMemo(() => {
-    return (
-      <div className={styles.dragPageItemOverlay}>
-        <div className={styles.titleIconsWrapper}>
-          <TagSelectionCell
-            onSelectedChange={props.onSelectedChange}
-            selectable={props.selectable}
-            selected={props.selected}
-          />
-          <ListIconCell color={props.color} />
-        </div>
-      </div>
-    );
-  }, [props.color, props.onSelectedChange, props.selectable, props.selected]);
-
-  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
-    id: getDNDId('tag-list', 'tag', props.tagId),
-    data: {
-      preview: tagTitleElement,
-    } satisfies DraggableTitleCellData,
-    disabled: !props.draggable,
-  });
+  // TODO: support drag
+  // const tagTitleElement = useMemo(() => {
+  //   return (
+  //     <div className={styles.dragPageItemOverlay}>
+  //       <div className={styles.titleIconsWrapper}>
+  //         <TagSelectionCell
+  //           onSelectedChange={props.onSelectedChange}
+  //           selectable={props.selectable}
+  //           selected={props.selected}
+  //         />
+  //         <ListIconCell color={props.color} />
+  //       </div>
+  //     </div>
+  //   );
+  // }, [props.color, props.onSelectedChange, props.selectable, props.selected]);
 
   return (
     <TagListItemWrapper
@@ -112,16 +103,10 @@ export const TagListItem = (props: TagListItemProps) => {
       to={props.to}
       tagId={props.tagId}
       draggable={props.draggable}
-      isDragging={isDragging}
+      isDragging={false}
     >
       <ColWrapper flex={9}>
-        <ColWrapper
-          className={styles.dndCell}
-          flex={8}
-          ref={setNodeRef}
-          {...attributes}
-          {...listeners}
-        >
+        <ColWrapper className={styles.dndCell} flex={8}>
           <div className={styles.titleIconsWrapper}>
             <TagSelectionCell
               onSelectedChange={props.onSelectedChange}
