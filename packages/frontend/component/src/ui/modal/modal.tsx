@@ -11,7 +11,7 @@ import { assignInlineVars } from '@vanilla-extract/dynamic';
 import clsx from 'clsx';
 import type { CSSProperties } from 'react';
 import { forwardRef, useCallback, useEffect } from 'react';
-import { useTransition } from 'react-transition-state';
+import { type TransitionState, useTransition } from 'react-transition-state';
 
 import type { IconButtonProps } from '../button';
 import { IconButton } from '../button';
@@ -83,30 +83,24 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
   ) => {
     const [{ status }, toggle] = useTransition({
       timeout: animationTimeout,
+      onStateChange: useCallback(
+        ({ current }: { current: TransitionState }) => {
+          // add more status if needed
+          if (current.status === 'exited') customOnOpenChange?.(false);
+          if (current.status === 'entered') customOnOpenChange?.(true);
+        },
+        [customOnOpenChange]
+      ),
     });
     useEffect(() => {
       toggle(customOpen);
     }, [customOpen]);
 
-    const handleOpenChange = useCallback(
-      (open: boolean) => {
-        if (!open) {
-          toggle(open);
-          const timeout = setTimeout(() => {
-            customOnOpenChange?.(open);
-          }, animationTimeout);
-          return () => clearTimeout(timeout);
-        }
-        return customOnOpenChange?.(open);
-      },
-      [animationTimeout, customOnOpenChange]
-    );
-
     return (
       <Dialog.Root
         modal={modal}
         open={status !== 'exited'}
-        onOpenChange={handleOpenChange}
+        onOpenChange={toggle}
         {...props}
       >
         <Dialog.Portal {...portalOptions}>

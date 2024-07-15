@@ -36,7 +36,15 @@ export const CreateCollectionModal = ({
   }, [onOpenChange]);
 
   return (
-    <Modal open={open} title={title} onOpenChange={onOpenChange} width={480}>
+    <Modal
+      open={open}
+      title={title}
+      onOpenChange={onOpenChange}
+      width={480}
+      contentOptions={{
+        'aria-describedby': undefined,
+      }}
+    >
       {init != null ? (
         <CreateCollection
           showTips={showTips}
