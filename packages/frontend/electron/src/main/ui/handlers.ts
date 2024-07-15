@@ -6,11 +6,13 @@ import { persistentConfig } from '../config-storage/persist';
 import { logger } from '../logger';
 import type { NamespaceHandlers } from '../type';
 import {
+  activateView,
   addTab,
   closeTab,
   getMainWindow,
   getOnboardingWindow,
   getTabViewsMeta,
+  getWorkbenchMeta,
   handleWebContentsResize,
   initAndShowMainWindow,
   isActiveTab,
@@ -22,6 +24,7 @@ import {
   updateWorkbenchMeta,
 } from '../windows-manager';
 import { getChallengeResponse } from './challenge';
+import { uiSubjects } from './subject';
 
 export let isOnline = true;
 
@@ -155,7 +158,18 @@ export const uiHandlers = {
   isActiveTab: async (_, tabKey: string) => {
     return isActiveTab(tabKey);
   },
-
+  getWorkbenchMeta: async (_, ...args: Parameters<typeof getWorkbenchMeta>) => {
+    return getWorkbenchMeta(...args);
+  },
+  updateWorkbenchMeta: async (
+    _,
+    ...args: Parameters<typeof updateWorkbenchMeta>
+  ) => {
+    return updateWorkbenchMeta(...args);
+  },
+  getTabViewsMeta: async () => {
+    return getTabViewsMeta();
+  },
   addTab: async (_, ...args: Parameters<typeof addTab>) => {
     await addTab(...args);
   },
@@ -165,14 +179,14 @@ export const uiHandlers = {
   closeTab: async (_, ...args: Parameters<typeof closeTab>) => {
     await closeTab(...args);
   },
-  getTabViewsMeta: async () => {
-    return getTabViewsMeta();
+  activateView: async (_, ...args: Parameters<typeof activateView>) => {
+    activateView(...args);
   },
-  updateWorkbenchMeta: async (
-    _,
-    ...args: Parameters<typeof updateWorkbenchMeta>
-  ) => {
-    return updateWorkbenchMeta(...args);
+  toggleRightSidebar: async (_, tabId?: string) => {
+    tabId ??= getTabViewsMeta().activeWorkbenchId;
+    if (tabId) {
+      uiSubjects.onToggleRightSidebar$.next(tabId);
+    }
   },
   updateTabsBoundingRect: async (
     _,

@@ -73,12 +73,12 @@ schema = isDev ? 'affine-dev' : schema;
 
 export const appInfo = {
   electron: true,
-  windowName: process.argv
-    .find(arg => arg.startsWith('--window-name='))
-    ?.split('=')[1],
-  tabViewKey: process.argv
-    .find(arg => arg.startsWith('--view-key='))
-    ?.split('=')[1],
+  windowName:
+    process.argv.find(arg => arg.startsWith('--window-name='))?.split('=')[1] ??
+    'unknown',
+  tabViewId:
+    process.argv.find(arg => arg.startsWith('--view-id='))?.split('=')[1] ??
+    'unknown',
   schema,
 };
 

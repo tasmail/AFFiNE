@@ -1,12 +1,12 @@
-import { useAtomValue } from 'jotai';
+import { useGlobalStateValue } from '@toeverything/infra';
 
 import { NavigationButtons } from '../../../modules/navigation';
+import { LEFT_SIDEBAR_OPEN_KEY } from '..';
 import { navHeaderStyle } from '../index.css';
-import { appSidebarOpenAtom } from '../index.jotai';
 import { SidebarSwitch } from './sidebar-switch';
 
 export const SidebarHeader = () => {
-  const open = useAtomValue(appSidebarOpenAtom);
+  const open = useGlobalStateValue(LEFT_SIDEBAR_OPEN_KEY, true);
 
   return (
     <div

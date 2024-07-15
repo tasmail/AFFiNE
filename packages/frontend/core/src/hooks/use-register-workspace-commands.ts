@@ -1,6 +1,10 @@
 import { useI18n } from '@affine/i18n';
 import type { AffineEditorContainer } from '@blocksuite/presets';
-import { useService, WorkspaceService } from '@toeverything/infra';
+import {
+  GlobalStateService,
+  useService,
+  WorkspaceService,
+} from '@toeverything/infra';
 import { useStore } from 'jotai';
 import { useTheme } from 'next-themes';
 import { useEffect } from 'react';
@@ -67,6 +71,7 @@ export function useRegisterWorkspaceCommands() {
   const navigationHelper = useNavigateHelper();
   const [editor] = useActiveBlocksuiteEditor();
   const cmdkQuickSearchService = useService(CMDKQuickSearchService);
+  const globalState = useService(GlobalStateService).globalState;
 
   useEffect(() => {
     const unsub = registerCMDKCommand(cmdkQuickSearchService, editor);
@@ -119,12 +124,12 @@ export function useRegisterWorkspaceCommands() {
 
   // register AffineLayoutCommands
   useEffect(() => {
-    const unsub = registerAffineLayoutCommands({ t, store });
+    const unsub = registerAffineLayoutCommands({ t, globalState });
 
     return () => {
       unsub();
     };
-  }, [store, t]);
+  }, [globalState, store, t]);
 
   // register AffineCreationCommands
   useEffect(() => {

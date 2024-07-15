@@ -1,14 +1,14 @@
-import { useAtom } from 'jotai';
+import { useGlobalState } from '@toeverything/infra';
 import { useCallback, useMemo } from 'react';
 
-import { appSidebarOpenAtom } from '../../components/app-sidebar';
+import { LEFT_SIDEBAR_OPEN_KEY } from '../../components/app-sidebar';
 
 export function useSwitchSidebarStatus() {
-  const [isOpened, setOpened] = useAtom(appSidebarOpenAtom);
+  const [isOpened, setOpened] = useGlobalState(LEFT_SIDEBAR_OPEN_KEY, true);
 
   const onOpenChange = useCallback(() => {
-    setOpened(open => !open);
-  }, [setOpened]);
+    setOpened(!isOpened);
+  }, [isOpened, setOpened]);
 
   return useMemo(
     () => ({

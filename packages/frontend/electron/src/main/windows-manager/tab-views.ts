@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
-import type { TabViewsMetaSchema } from '@toeverything/infra/app-config-storage';
 import {
   app,
   type CookiesSetDetails,
@@ -23,19 +22,18 @@ import {
 
 import { isMacOS } from '../../shared/utils';
 import { isDev } from '../config';
-import { persistentConfig } from '../config-storage/persist';
 import { mainWindowOrigin, shellViewUrl } from '../constants';
 import { ensureHelperProcess } from '../helper-process';
 import { logger } from '../logger';
+import { globalStateStorage } from '../shared-storage/storage';
 import { parseCookie } from '../utils';
 import { getMainWindow, MainWindowManager } from './main-window';
-
-const defaultTabViewsMeta = {
-  workbenches: [],
-  activeWorkbenchKey: undefined,
-} satisfies TabViewsMetaSchema;
-
-type WorkbenchMeta = TabViewsMetaSchema['workbenches'][0];
+import {
+  TabViewsMetaKey,
+  type TabViewsMetaSchema,
+  tabViewsMetaSchema,
+  type WorkbenchMeta,
+} from './tab-views-meta-schema';
 
 async function getAdditionalArguments() {
   const { getExposedMeta } = await import('../exposed');
@@ -49,6 +47,68 @@ async function getAdditionalArguments() {
   ];
 }
 
+const TabViewsMetaState = {
+  $: globalStateStorage
+    .watch<TabViewsMetaSchema>(TabViewsMetaKey)
+    .pipe(map(v => tabViewsMetaSchema.parse(v ?? {}))),
+
+  set value(value: TabViewsMetaSchema) {
+    globalStateStorage.set(TabViewsMetaKey, value);
+  },
+
+  get value() {
+    return tabViewsMetaSchema.parse(
+      globalStateStorage.get(TabViewsMetaKey) ?? {}
+    );
+  },
+
+  // shallow merge
+  patch(patch: Partial<TabViewsMetaSchema>) {
+    this.value = {
+      ...this.value,
+      ...patch,
+    };
+  },
+};
+
+type AddTabAction = {
+  type: 'add-tab';
+  payload: WorkbenchMeta;
+};
+
+type CloseTabAction = {
+  type: 'close-tab';
+  payload?: string;
+};
+
+type PinTabAction = {
+  type: 'pin-tab';
+  payload: { key: string; shouldPin: boolean };
+};
+
+type ActivateViewAction = {
+  type: 'activate-view';
+  payload: { tabId: string; viewIndex: number };
+};
+
+type SeparateViewAction = {
+  type: 'separate-view';
+  payload: { tabId: string; viewIndex: number };
+};
+
+type OpenInSplitViewAction = {
+  type: 'open-in-split-view';
+  payload: { tabId: string };
+};
+
+type TabAction =
+  | AddTabAction
+  | CloseTabAction
+  | PinTabAction
+  | ActivateViewAction
+  | SeparateViewAction
+  | OpenInSplitViewAction;
+
 export class WebContentViewsManager {
   static readonly instance = new WebContentViewsManager(
     MainWindowManager.instance
@@ -58,9 +118,7 @@ export class WebContentViewsManager {
     this.setup();
   }
 
-  readonly tabViewsMeta$ = new BehaviorSubject(
-    persistentConfig.get('tabViewsMeta') ?? defaultTabViewsMeta
-  );
+  readonly tabViewsMeta$ = TabViewsMetaState.$;
   readonly tabsBoundingRect$ = new BehaviorSubject<Rectangle | null>(null);
 
   // all web views
@@ -75,44 +133,37 @@ export class WebContentViewsManager {
     )
   );
 
-  // use a new subject to make sure we do not mix up the event
-  readonly onSeparateView$ = new Subject<{
-    tabKey: string;
-    viewIndex: number;
-  }>();
-
-  readonly onOpenInSplitView$ = new Subject<{
-    tabKey: string;
-  }>();
+  /**
+   * Emits whenever a tab action is triggered.
+   */
+  readonly tabAction$ = new Subject<TabAction>();
 
   readonly activeWorkbenchKey$ = this.tabViewsMeta$.pipe(
-    map(m => m?.activeWorkbenchKey)
+    map(m => m?.activeWorkbenchId)
   );
   readonly activeWorkbench$ = combineLatest([
     this.activeWorkbenchKey$,
     this.workbenchViewsMap$,
   ]).pipe(map(([key, views]) => (key ? views.get(key) : undefined)));
+
   readonly shellView$ = this.webViewsMap$.pipe(
     map(views => views.get('shell'))
   );
+
   readonly webViewKeys$ = this.webViewsMap$.pipe(
     map(views => Array.from(views.keys()))
   );
 
   get tabViewsMeta() {
-    return this.tabViewsMeta$.value;
+    return TabViewsMetaState.value;
   }
 
   private set tabViewsMeta(meta: TabViewsMetaSchema) {
-    persistentConfig.patch('tabViewsMeta', meta);
-    this.tabViewsMeta$.next(meta);
+    TabViewsMetaState.value = meta;
   }
 
   readonly patchTabViewsMeta = (patch: Partial<TabViewsMetaSchema>) => {
-    this.tabViewsMeta = {
-      ...this.tabViewsMeta,
-      ...patch,
-    };
+    TabViewsMetaState.patch(patch);
   };
 
   get tabsBoundingRect() {
@@ -127,19 +178,19 @@ export class WebContentViewsManager {
     return this.webViewsMap$.value.get('shell');
   }
 
-  get activeWorkbenchKey() {
-    return this.tabViewsMeta$.value.activeWorkbenchKey;
+  get activeWorkbenchId() {
+    return this.tabViewsMeta.activeWorkbenchId;
   }
 
   get activeWorkbenchView() {
-    return this.activeWorkbenchKey
-      ? this.webViewsMap$.value.get(this.activeWorkbenchKey)
+    return this.activeWorkbenchId
+      ? this.webViewsMap$.value.get(this.activeWorkbenchId)
       : undefined;
   }
 
   get activeWorkbenchMeta() {
     return this.tabViewsMeta.workbenches.find(
-      w => w.key === this.activeWorkbenchKey
+      w => w.id === this.activeWorkbenchId
     );
   }
 
@@ -155,9 +206,9 @@ export class WebContentViewsManager {
     return Array.from(this.tabViewsMap.values());
   }
 
-  updateWorkbenchMeta = (key: string, patch: Partial<WorkbenchMeta>) => {
+  updateWorkbenchMeta = (id: string, patch: Partial<WorkbenchMeta>) => {
     const workbenches = this.tabViewsMeta.workbenches;
-    const index = workbenches.findIndex(w => w.key === key);
+    const index = workbenches.findIndex(w => w.id === id);
     if (index === -1) {
       return;
     }
@@ -170,30 +221,30 @@ export class WebContentViewsManager {
     });
   };
 
-  isActiveTab = (key: string) => {
-    return this.activeWorkbenchKey === key;
+  isActiveTab = (id: string) => {
+    return this.activeWorkbenchId === id;
   };
 
-  closeTab = async (key?: string) => {
-    if (!key) {
-      key = this.activeWorkbenchKey;
+  closeTab = async (id?: string) => {
+    if (!id) {
+      id = this.activeWorkbenchId;
     }
 
-    if (!key) {
+    if (!id) {
       return;
     }
 
-    const index = this.tabViewsMeta.workbenches.findIndex(w => w.key === key);
+    const index = this.tabViewsMeta.workbenches.findIndex(w => w.id === id);
     if (index === -1 || this.tabViewsMeta.workbenches.length === 1) {
       return;
     }
     const workbenches = this.tabViewsMeta.workbenches.toSpliced(index, 1);
     // if the active view is closed, switch to the next view (index unchanged)
     // if the new index is out of bound, switch to the last view
-    let activeWorkbenchKey = this.activeWorkbenchKey;
+    let activeWorkbenchKey = this.activeWorkbenchId;
 
-    if (key === activeWorkbenchKey) {
-      activeWorkbenchKey = workbenches[index]?.key ?? workbenches.at(-1)?.key;
+    if (id === activeWorkbenchKey) {
+      activeWorkbenchKey = workbenches[index]?.id ?? workbenches.at(-1)?.id;
     }
 
     if (!activeWorkbenchKey) {
@@ -202,10 +253,10 @@ export class WebContentViewsManager {
 
     this.patchTabViewsMeta({
       workbenches,
-      activeWorkbenchKey,
+      activeWorkbenchId: activeWorkbenchKey,
     });
 
-    const view = this.tabViewsMap.get(key);
+    const view = this.tabViewsMap.get(id);
 
     if (this.mainWindow && view) {
       this.mainWindow.contentView.removeChildView(view);
@@ -214,7 +265,7 @@ export class WebContentViewsManager {
     await this.showTab(activeWorkbenchKey);
   };
 
-  addTab = async (workbench?: Omit<WorkbenchMeta, 'key' | 'id'>) => {
+  addTab = async (workbench?: Omit<WorkbenchMeta, 'id'>) => {
     if (!workbench && this.activeWorkbenchMeta) {
       workbench = this.activeWorkbenchMeta;
     }
@@ -222,12 +273,31 @@ export class WebContentViewsManager {
       return;
     }
     const workbenches = this.tabViewsMeta.workbenches;
-    const newKey = this.generateViewKey('app');
+    const newKey = this.generateViewId('app');
     this.patchTabViewsMeta({
-      activeWorkbenchKey: newKey,
-      workbenches: [...workbenches, { ...workbench, key: newKey }],
+      activeWorkbenchId: newKey,
+      workbenches: [
+        ...workbenches,
+        {
+          ...workbench,
+          views: [
+            {
+              ...workbench.views[0],
+              id: nanoid(),
+            },
+          ],
+          id: newKey,
+        },
+      ],
     });
     await this.showTab(newKey);
+    this.tabAction$.next({
+      type: 'add-tab',
+      payload: {
+        ...workbench,
+        id: newKey,
+      },
+    });
     return {
       ...workbench,
       key: newKey,
@@ -235,38 +305,43 @@ export class WebContentViewsManager {
   };
 
   loadTab = async (
-    key: string,
+    id: string,
     show: boolean = false
   ): Promise<WebContentsView | undefined> => {
-    if (!this.tabViewsMeta.workbenches.some(w => w.key === key)) {
+    if (!this.tabViewsMeta.workbenches.some(w => w.id === id)) {
       return;
     }
 
-    let view = this.tabViewsMap.get(key);
+    let view = this.tabViewsMap.get(id);
     if (!view) {
-      view = await this.createAndAddView('app', key, show);
-      const workbench = this.tabViewsMeta.workbenches.find(w => w.key === key);
-      if (workbench) {
-        const url = workbench.views[0].url;
-        // todo(@pengx17): handle multiple workbench views
-        logger.info(`loading tab ${key} at ${url}`);
-        await view.webContents.loadURL(url);
+      view = await this.createAndAddView('app', id, show);
+      const workbench = this.tabViewsMeta.workbenches.find(w => w.id === id);
+      const viewMeta = workbench?.views[workbench.activeViewIndex];
+      if (workbench && viewMeta) {
+        const url = new URL(
+          workbench.basename + (viewMeta.path?.pathname ?? ''),
+          mainWindowOrigin
+        );
+        url.hash = viewMeta.path?.hash ?? '';
+        url.search = viewMeta.path?.search ?? '';
+        logger.info(`loading tab ${id} at ${url.href}`);
+        await view.webContents.loadURL(url.href);
       }
     }
     return view;
   };
 
-  showTab = async (key: string): Promise<WebContentsView | undefined> => {
-    if (this.activeWorkbenchKey !== key) {
+  showTab = async (id: string): Promise<WebContentsView | undefined> => {
+    if (this.activeWorkbenchId !== id) {
       this.patchTabViewsMeta({
-        activeWorkbenchKey: key,
+        activeWorkbenchId: id,
       });
     }
-    let view = this.tabViewsMap.get(key);
+    let view = this.tabViewsMap.get(id);
     if (!view) {
-      view = await this.loadTab(key, true);
+      view = await this.loadTab(id, true);
     } else {
-      this.bringToFront(key);
+      this.bringToFront(id);
     }
     if (view) {
       this.resizeAppView(view);
@@ -281,10 +356,15 @@ export class WebContentViewsManager {
       w => w.pinned
     );
 
-    const workbench = this.tabViewsMeta.workbenches.find(w => w.key === key);
+    const workbench = this.tabViewsMeta.workbenches.find(w => w.id === key);
     if (!workbench) {
       return;
     }
+
+    this.tabAction$.next({
+      type: 'pin-tab',
+      payload: { key, shouldPin },
+    });
 
     if (workbench.pinned && !shouldPin) {
       this.patchTabViewsMeta({
@@ -305,43 +385,44 @@ export class WebContentViewsManager {
     }
   };
 
-  separateView = (tabKey: string, viewIndex: number) => {
-    const tabMeta = this.tabViewsMeta.workbenches.find(w => w.key === tabKey);
+  activateView = (tabId: string, viewIndex: number) => {
+    this.tabAction$.next({
+      type: 'activate-view',
+      payload: { tabId, viewIndex },
+    });
+    this.updateWorkbenchMeta(tabId, {
+      activeViewIndex: viewIndex,
+    });
+  };
+
+  separateView = (tabId: string, viewIndex: number) => {
+    const tabMeta = this.tabViewsMeta.workbenches.find(w => w.id === tabId);
     if (!tabMeta) {
       return;
     }
-    this.onSeparateView$.next({
-      tabKey,
-      viewIndex,
+    this.tabAction$.next({
+      type: 'separate-view',
+      payload: { tabId, viewIndex },
     });
-    const newTabMeta = {
+    const newTabMeta: WorkbenchMeta = {
       ...tabMeta,
+      activeViewIndex: 0,
       views: [tabMeta.views[viewIndex]],
     };
-    updateWorkbenchMeta(tabKey, {
+    this.updateWorkbenchMeta(tabId, {
       views: tabMeta.views.toSpliced(viewIndex, 1),
     });
     addTab(newTabMeta).catch(logger.error);
   };
 
-  openInSplitView = (tabKey: string) => {
-    const tabMeta = this.tabViewsMeta.workbenches.find(w => w.key === tabKey);
+  openInSplitView = (tabId: string) => {
+    const tabMeta = this.tabViewsMeta.workbenches.find(w => w.id === tabId);
     if (!tabMeta) {
       return;
     }
-    this.onOpenInSplitView$.next({
-      tabKey,
-    });
-    const viewMeta = tabMeta.views[0];
-    updateWorkbenchMeta(tabKey, {
-      ...tabMeta,
-      views: [
-        viewMeta,
-        {
-          ...viewMeta,
-          id: nanoid(),
-        },
-      ],
+    this.tabAction$.next({
+      type: 'open-in-split-view',
+      payload: { tabId },
     });
   };
 
@@ -380,21 +461,20 @@ export class WebContentViewsManager {
           if (this.tabViewsMeta.workbenches.length === 0) {
             // create a default view (e.g., on first launch)
             await this.addTab({
+              basename: '/',
+              activeViewIndex: 0,
               views: [
                 {
                   id: nanoid(),
-                  title: '',
-                  url: mainWindowOrigin,
-                  moduleName: 'all',
                 },
               ],
             });
           } else {
-            const defaultTabKey =
-              this.activeWorkbenchKey ?? this.tabViewsMeta.workbenches[0].key;
+            const defaultTabId =
+              this.activeWorkbenchId ?? this.tabViewsMeta.workbenches[0].id;
             const pendingTabs = this.tabViewsMeta.workbenches
-              .map(w => w.key)
-              .filter(k => defaultTabKey !== k);
+              .map(w => w.id)
+              .filter(k => defaultTabId !== k);
             const loadTab = async (
               loadKey: string,
               show: boolean,
@@ -408,7 +488,7 @@ export class WebContentViewsManager {
                 await loadTab(next, false, pendingTabs);
               }
             };
-            await loadTab(defaultTabKey, true, pendingTabs);
+            await loadTab(defaultTabId, true, pendingTabs);
           }
         })().catch(logger.error);
       })
@@ -470,23 +550,6 @@ export class WebContentViewsManager {
     }
   };
 
-  toWebContentsId = (key: string) => {
-    const view = this.getViewById(key);
-    if (view) {
-      return view.webContents.id;
-    }
-    return -1;
-  };
-
-  fromWebContentsId = (webContentId: number) => {
-    for (const [key, view] of this.tabViewsMap) {
-      if (view.webContents.id === webContentId) {
-        return key;
-      }
-    }
-    return undefined;
-  };
-
   resizeAppView = (view: View) => {
     this.shellView?.setBounds({
       x: 0,
@@ -503,13 +566,13 @@ export class WebContentViewsManager {
     });
   };
 
-  private readonly generateViewKey = (type: 'app' | 'shell') => {
+  private readonly generateViewId = (type: 'app' | 'shell') => {
     return type === 'shell' ? 'shell' : `app-${nanoid()}`;
   };
 
   private readonly createAndAddView = async (
     type: 'app' | 'shell',
-    viewKey = this.generateViewKey(type),
+    viewId = this.generateViewId(type),
     show = false
   ) => {
     if (this.shellView && type === 'shell') {
@@ -521,7 +584,7 @@ export class WebContentViewsManager {
     const additionalArguments = await getAdditionalArguments();
     const helperProcessManager = await ensureHelperProcess();
     // will be added to appInfo
-    additionalArguments.push(`--view-key=${viewKey}`);
+    additionalArguments.push(`--view-id=${viewId}`);
 
     const view = new WebContentsView({
       webPreferences: {
@@ -535,7 +598,7 @@ export class WebContentViewsManager {
       },
     });
 
-    this.webViewsMap$.next(this.tabViewsMap.set(viewKey, view));
+    this.webViewsMap$.next(this.tabViewsMap.set(viewId, view));
 
     // shell process do not need to connect to helper process
     if (type !== 'shell') {
@@ -547,7 +610,7 @@ export class WebContentViewsManager {
         unsub();
         this.webViewsMap$.next(
           new Map(
-            [...this.tabViewsMap.entries()].filter(([key]) => key !== viewKey)
+            [...this.tabViewsMap.entries()].filter(([key]) => key !== viewId)
           )
         );
       });
@@ -576,7 +639,7 @@ export class WebContentViewsManager {
       type === 'shell' ? maxIndex : show ? maxIndex - 1 : 0
     );
 
-    logger.info(`view ${viewKey} created in ${performance.now() - start}ms`);
+    logger.info(`view ${viewId} created in ${performance.now() - start}ms`);
     return view;
   };
 }
@@ -631,52 +694,46 @@ export function onTabViewsMetaChanged(
   };
 }
 
-export function onSeparateView(
-  fn: ({ tabKey, viewIndex }: { tabKey: string; viewIndex: number }) => void
-) {
-  const sub = WebContentViewsManager.instance.onSeparateView$.subscribe(fn);
-  return () => {
-    sub.unsubscribe();
-  };
-}
-
-export function onOpenInSplitView(
-  fn: ({ tabKey }: { tabKey: string }) => void
-) {
-  const sub = WebContentViewsManager.instance.onOpenInSplitView$.subscribe(fn);
-  return () => {
-    sub.unsubscribe();
-  };
-}
-
+export const updateWorkbenchMeta = (
+  id: string,
+  meta: Partial<Omit<WorkbenchMeta, 'id'>>
+) => {
+  WebContentViewsManager.instance.updateWorkbenchMeta(id, meta);
+};
+export const getWorkbenchMeta = (id: string) => {
+  return TabViewsMetaState.value.workbenches.find(w => w.id === id);
+};
+export const getTabViewsMeta = () => TabViewsMetaState.value;
 export const isActiveTab = WebContentViewsManager.instance.isActiveTab;
 export const addTab = WebContentViewsManager.instance.addTab;
 export const showTab = WebContentViewsManager.instance.showTab;
 export const closeTab = WebContentViewsManager.instance.closeTab;
+export const activateView = WebContentViewsManager.instance.activateView;
 
-export const showDevTools = (key?: string) => {
-  const view = key
-    ? WebContentViewsManager.instance.getViewById(key)
+export const onTabAction = (fn: (event: TabAction) => void) => {
+  const { unsubscribe } =
+    WebContentViewsManager.instance.tabAction$.subscribe(fn);
+
+  return unsubscribe;
+};
+
+export const showDevTools = (id?: string) => {
+  const view = id
+    ? WebContentViewsManager.instance.getViewById(id)
     : WebContentViewsManager.instance.activeWorkbenchView;
   if (view) {
     view.webContents.openDevTools();
   }
 };
 
-export const updateWorkbenchMeta =
-  WebContentViewsManager.instance.updateWorkbenchMeta;
-
 export const updateTabsBoundingRect = (rect: Rectangle) => {
   WebContentViewsManager.instance.tabsBoundingRect = rect;
 };
 
-export const getTabViewsMeta = () =>
-  WebContentViewsManager.instance.tabViewsMeta$.value;
-
-export const showTabContextMenu = async (tabKey: string, viewIndex: number) => {
+export const showTabContextMenu = async (tabId: string, viewIndex: number) => {
   const workbenches = WebContentViewsManager.instance.tabViewsMeta.workbenches;
   const unpinned = workbenches.filter(w => !w.pinned);
-  const tabMeta = workbenches.find(w => w.key === tabKey);
+  const tabMeta = workbenches.find(w => w.id === tabId);
   if (!tabMeta) {
     return;
   }
@@ -686,20 +743,20 @@ export const showTabContextMenu = async (tabKey: string, viewIndex: number) => {
       ? {
           label: 'Unpin tab',
           click: () => {
-            WebContentViewsManager.instance.pinTab(tabKey, false);
+            WebContentViewsManager.instance.pinTab(tabId, false);
           },
         }
       : {
           label: 'Pin tab',
           click: () => {
-            WebContentViewsManager.instance.pinTab(tabKey, true);
+            WebContentViewsManager.instance.pinTab(tabId, true);
           },
         },
     {
       label: 'Refresh tab',
       click: () => {
         WebContentViewsManager.instance
-          .getViewById(tabKey)
+          .getViewById(tabId)
           ?.webContents.reload();
       },
     },
@@ -716,13 +773,13 @@ export const showTabContextMenu = async (tabKey: string, viewIndex: number) => {
       ? {
           label: 'Separate tabs',
           click: () => {
-            WebContentViewsManager.instance.separateView(tabKey, viewIndex);
+            WebContentViewsManager.instance.separateView(tabId, viewIndex);
           },
         }
       : {
           label: 'Open in split view',
           click: () => {
-            WebContentViewsManager.instance.openInSplitView(tabKey);
+            WebContentViewsManager.instance.openInSplitView(tabId);
           },
         },
 
@@ -732,7 +789,7 @@ export const showTabContextMenu = async (tabKey: string, viewIndex: number) => {
           {
             label: 'Close tab',
             click: () => {
-              closeTab(tabKey).catch(logger.error);
+              closeTab(tabId).catch(logger.error);
             },
           },
           {
@@ -740,7 +797,7 @@ export const showTabContextMenu = async (tabKey: string, viewIndex: number) => {
             click: () => {
               const tabsToRetain =
                 WebContentViewsManager.instance.tabViewsMeta.workbenches.filter(
-                  w => w.key === tabKey || w.pinned
+                  w => w.id === tabId || w.pinned
                 );
 
               WebContentViewsManager.instance.patchTabViewsMeta({

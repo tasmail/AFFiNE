@@ -1,9 +1,5 @@
 import type { MainEventRegister } from '../type';
-import {
-  onOpenInSplitView,
-  onSeparateView,
-  onTabViewsMetaChanged,
-} from '../windows-manager';
+import { onTabAction, onTabViewsMetaChanged } from '../windows-manager';
 import { uiSubjects } from './subject';
 
 /**
@@ -23,6 +19,11 @@ export const uiEvents = {
     };
   },
   onTabViewsMetaChanged,
-  onSeparateView,
-  onOpenInSplitView,
+  onTabAction,
+  onToggleRightSidebar: (fn: (tabId: string) => void) => {
+    const sub = uiSubjects.onToggleRightSidebar$.subscribe(fn);
+    return () => {
+      sub.unsubscribe();
+    };
+  },
 } satisfies Record<string, MainEventRegister>;

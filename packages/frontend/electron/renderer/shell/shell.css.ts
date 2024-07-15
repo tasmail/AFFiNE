@@ -5,6 +5,7 @@ export const root = style({
   width: '100vw',
   height: '100vh',
   display: 'flex',
+  alignItems: 'center',
   flexDirection: 'row',
   borderBottom: `1px solid ${cssVar('borderColor')}`,
   ['WebkitAppRegion' as string]: 'drag',

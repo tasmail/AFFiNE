@@ -1,24 +1,27 @@
 import { IconButton } from '@affine/component';
-import { apis, events } from '@affine/electron-api';
+import { LEFT_SIDEBAR_OPEN_KEY } from '@affine/core/components/app-sidebar';
+import type { TabViewsMetaSchema, WorkbenchMeta } from '@affine/electron-api';
+import { apis, TabViewsMetaKey } from '@affine/electron-api';
 import {
   CloseIcon,
   DeleteIcon,
   FolderIcon,
   PageIcon,
   PlusIcon,
+  RightSidebarIcon,
+  SidebarIcon,
   TagIcon,
   TodayIcon,
   ViewLayersIcon,
 } from '@blocksuite/icons/rc';
-import type { TabViewsMetaSchema } from '@toeverything/infra';
+import { useGlobalState, useGlobalStateValue } from '@toeverything/infra';
 import { partition } from 'lodash-es';
-import { Fragment, type ReactNode, useEffect, useState } from 'react';
+import { Fragment, type ReactNode, useCallback } from 'react';
 
 import * as styles from './shell.css';
 import { WindowsAppControls } from './windows-app-controls';
 
-type ModuleName =
-  TabViewsMetaSchema['workbenches'][0]['views'][0]['moduleName'];
+type ModuleName = NonNullable<WorkbenchMeta['views'][0]['moduleName']>;
 
 const moduleNameToIcon = {
   all: <FolderIcon />,
@@ -28,23 +31,6 @@ const moduleNameToIcon = {
   tag: <TagIcon />,
   trash: <DeleteIcon />,
 } satisfies Record<ModuleName, ReactNode>;
-
-const useTabViewsMeta = () => {
-  const [tabViewsMeta, setTabViewsMeta] = useState<TabViewsMetaSchema>({
-    workbenches: [],
-  });
-
-  useEffect(() => {
-    apis?.ui.getTabViewsMeta().then(meta => {
-      setTabViewsMeta(meta);
-    });
-    return events?.ui.onTabViewsMetaChanged(meta => {
-      setTabViewsMeta(meta);
-    });
-  }, []);
-
-  return tabViewsMeta;
-};
 
 const WorkbenchTab = ({
   workbench,
@@ -59,7 +45,7 @@ const WorkbenchTab = ({
   return (
     <div
       role="button"
-      key={workbench.key}
+      key={workbench.id}
       data-active={tabActive}
       className={styles.tab}
     >
@@ -67,23 +53,21 @@ const WorkbenchTab = ({
         return (
           <Fragment key={view.id}>
             <button
-              key={view.url}
+              key={view.id}
               className={styles.splitViewLabel}
               data-active={activeViewIndex === viewIdx && tabActive}
               onContextMenu={() => {
-                apis?.ui.showTabContextMenu(workbench.key, viewIdx);
+                apis?.ui.showTabContextMenu(workbench.id, viewIdx);
               }}
               onClick={e => {
                 e.stopPropagation();
-                apis?.ui.showTab(workbench.key).then(() => {
-                  apis?.ui.updateWorkbenchMeta(workbench.key, {
-                    activeViewIndex: viewIdx,
-                  });
+                apis?.ui.showTab(workbench.id).then(() => {
+                  apis?.ui.activateView(workbench.id, viewIdx);
                 });
               }}
             >
               <div className={styles.labelIcon}>
-                {moduleNameToIcon[view.moduleName]}
+                {moduleNameToIcon[view.moduleName ?? 'doc']}
               </div>
               {workbench.pinned ? null : (
                 <div className={styles.splitViewLabelText}>{view.title}</div>
@@ -103,7 +87,7 @@ const WorkbenchTab = ({
           className={styles.controlIconButton}
           onClick={e => {
             e.stopPropagation();
-            apis?.ui.closeTab(workbench.key);
+            apis?.ui.closeTab(workbench.id);
           }}
         >
           <CloseIcon />
@@ -114,9 +98,19 @@ const WorkbenchTab = ({
 };
 
 export function ShellRoot() {
-  const tabViewsMeta = useTabViewsMeta();
+  const tabViewsMeta = useGlobalStateValue<TabViewsMetaSchema>(
+    TabViewsMetaKey,
+    {
+      workbenches: [],
+      activeWorkbenchId: '',
+    }
+  );
+  const [leftSidebarOpen, setLeftSidebarOpen] = useGlobalState(
+    LEFT_SIDEBAR_OPEN_KEY,
+    true
+  );
   const activeWorkbench = tabViewsMeta.workbenches.find(
-    workbench => workbench.key === tabViewsMeta.activeWorkbenchKey
+    workbench => workbench.id === tabViewsMeta.activeWorkbenchId
   );
   const activeView =
     activeWorkbench?.views[activeWorkbench.activeViewIndex ?? 0];
@@ -126,15 +120,33 @@ export function ShellRoot() {
     workbench => workbench.pinned
   );
 
+  const onAddTab = useCallback(() => {
+    if (activeView && activeWorkbench) {
+      apis?.ui.addTab({
+        activeViewIndex: 0,
+        basename: activeWorkbench.basename,
+        views: [activeView],
+      });
+    }
+  }, [activeView, activeWorkbench]);
+
   return (
     <div className={styles.root}>
+      <IconButton
+        size="large"
+        onClick={() => {
+          setLeftSidebarOpen(!leftSidebarOpen);
+        }}
+      >
+        <SidebarIcon />
+      </IconButton>
       <div className={styles.tabs}>
         {pinned.map(workbench => {
-          const tabActive = workbench.key === tabViewsMeta.activeWorkbenchKey;
+          const tabActive = workbench.id === tabViewsMeta.activeWorkbenchId;
           return (
             <WorkbenchTab
               tabsLength={pinned.length}
-              key={workbench.key}
+              key={workbench.id}
               workbench={workbench}
               active={tabActive}
             />
@@ -144,28 +156,29 @@ export function ShellRoot() {
           <div className={styles.pinSeparator} />
         )}
         {unpinned.map(workbench => {
-          const tabActive = workbench.key === tabViewsMeta.activeWorkbenchKey;
+          const tabActive = workbench.id === tabViewsMeta.activeWorkbenchId;
           return (
             <WorkbenchTab
               tabsLength={unpinned.length}
-              key={workbench.key}
+              key={workbench.id}
               workbench={workbench}
               active={tabActive}
             />
           );
         })}
         <div className={styles.divider} />
-        <IconButton
-          onClick={() => {
-            activeView &&
-              apis?.ui.addTab({
-                views: [activeView],
-              });
-          }}
-        >
+        <IconButton onClick={onAddTab}>
           <PlusIcon />
         </IconButton>
       </div>
+      <IconButton
+        size="large"
+        onClick={() => {
+          apis?.ui.toggleRightSidebar();
+        }}
+      >
+        <RightSidebarIcon />
+      </IconButton>
       <WindowsAppControls />
     </div>
   );

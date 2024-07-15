@@ -1,11 +1,14 @@
 import { IconButton } from '@affine/component';
+import { LEFT_SIDEBAR_OPEN_KEY } from '@affine/core/components/app-sidebar';
 import { RightSidebarIcon } from '@blocksuite/icons/rc';
-import { useLiveData, useService } from '@toeverything/infra';
-import { useAtomValue } from 'jotai';
+import {
+  useGlobalStateValue,
+  useLiveData,
+  useService,
+} from '@toeverything/infra';
 import { Suspense, useCallback } from 'react';
 
 import { AffineErrorBoundary } from '../../../components/affine/affine-error-boundary';
-import { appSidebarOpenAtom } from '../../../components/app-sidebar/index.jotai';
 import { SidebarSwitch } from '../../../components/app-sidebar/sidebar-header/sidebar-switch';
 import { ViewService } from '../services/view';
 import { WorkbenchService } from '../services/workbench';
@@ -42,7 +45,7 @@ const ToggleButton = ({
 
 export const RouteContainer = ({ route }: Props) => {
   const viewPosition = useViewPosition();
-  const leftSidebarOpen = useAtomValue(appSidebarOpenAtom);
+  const leftSidebarOpen = useGlobalStateValue(LEFT_SIDEBAR_OPEN_KEY, true);
   const workbench = useService(WorkbenchService).workbench;
   const view = useService(ViewService).view;
   const sidebarOpen = useLiveData(workbench.sidebarOpen$);

@@ -1,16 +1,16 @@
 import type { useI18n } from '@affine/i18n';
 import { SidebarIcon } from '@blocksuite/icons/rc';
-import type { createStore } from 'jotai';
+import type { GlobalState } from '@toeverything/infra';
 
-import { appSidebarOpenAtom } from '../components/app-sidebar';
+import { LEFT_SIDEBAR_OPEN_KEY } from '../components/app-sidebar';
 import { registerAffineCommand } from './registry';
 
 export function registerAffineLayoutCommands({
   t,
-  store,
+  globalState,
 }: {
   t: ReturnType<typeof useI18n>;
-  store: ReturnType<typeof createStore>;
+  globalState: GlobalState;
 }) {
   const unsubs: Array<() => void> = [];
   unsubs.push(
@@ -19,7 +19,7 @@ export function registerAffineLayoutCommands({
       category: 'affine:layout',
       icon: <SidebarIcon />,
       label: () =>
-        store.get(appSidebarOpenAtom)
+        globalState.get(LEFT_SIDEBAR_OPEN_KEY)
           ? t['com.affine.cmdk.affine.left-sidebar.collapse']()
           : t['com.affine.cmdk.affine.left-sidebar.expand'](),
 
@@ -27,7 +27,10 @@ export function registerAffineLayoutCommands({
         binding: '$mod+/',
       },
       run() {
-        store.set(appSidebarOpenAtom, v => !v);
+        globalState.set(
+          LEFT_SIDEBAR_OPEN_KEY,
+          !globalState.get(LEFT_SIDEBAR_OPEN_KEY)
+        );
       },
     })
   );

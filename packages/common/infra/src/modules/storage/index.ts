@@ -1,4 +1,10 @@
 export { GlobalCache, GlobalState } from './providers/global';
+export {
+  useGlobalCache,
+  useGlobalCacheValue,
+  useGlobalState,
+  useGlobalStateValue,
+} from './react';
 export { GlobalCacheService, GlobalStateService } from './services/global';
 
 import type { Framework } from '../../framework';

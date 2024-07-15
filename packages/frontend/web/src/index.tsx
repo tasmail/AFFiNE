@@ -2,6 +2,7 @@ import './polyfill/dispose';
 import './polyfill/intl-segmenter';
 import './polyfill/promise-with-resolvers';
 import './polyfill/request-idle-callback';
+import './polyfill/set-immediate';
 import '@affine/core/bootstrap/preload';
 
 import { performanceLogger } from '@affine/core/shared';

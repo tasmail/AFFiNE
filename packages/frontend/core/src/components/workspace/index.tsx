@@ -3,15 +3,15 @@ import { apis, appInfo } from '@affine/electron-api';
 import {
   DocsService,
   GlobalContextService,
+  useGlobalStateValue,
   useLiveData,
   useService,
 } from '@toeverything/infra';
 import { clsx } from 'clsx';
-import { useAtomValue } from 'jotai';
 import type { HTMLAttributes, PropsWithChildren, ReactElement } from 'react';
 import { forwardRef, useEffect, useRef } from 'react';
 
-import { appSidebarOpenAtom } from '../app-sidebar';
+import { LEFT_SIDEBAR_OPEN_KEY } from '../app-sidebar';
 import { appStyle, mainContainerStyle, toolStyle } from './index.css';
 
 export type WorkspaceRootProps = PropsWithChildren<{
@@ -54,13 +54,13 @@ export const MainContainer = forwardRef<
   { className, children, clientBorder, ...props },
   ref
 ): ReactElement {
-  const appSideBarOpen = useAtomValue(appSidebarOpenAtom);
+  const appSideBarOpen = useGlobalStateValue(LEFT_SIDEBAR_OPEN_KEY, true);
   const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (tabsRef.current) {
       return observeResize(tabsRef.current, () => {
-        if (appInfo?.tabViewKey && apis?.ui.isActiveTab(appInfo?.tabViewKey)) {
+        if (appInfo?.tabViewId && apis?.ui.isActiveTab(appInfo?.tabViewId)) {
           const rect = tabsRef.current?.getBoundingClientRect();
           if (!rect) {
             return;

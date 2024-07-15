@@ -1,7 +1,14 @@
 import { Skeleton } from '@affine/component';
 import { ResizePanel } from '@affine/component/resize-panel';
-import { useServiceOptional, WorkspaceService } from '@toeverything/infra';
-import { useAtom, useAtomValue } from 'jotai';
+import {
+  GlobalStateService,
+  useGlobalState,
+  useGlobalStateValue,
+  useService,
+  useServiceOptional,
+  WorkspaceService,
+} from '@toeverything/infra';
+import { useAtom } from 'jotai';
 import { debounce } from 'lodash-es';
 import type { PropsWithChildren, ReactElement } from 'react';
 import { useEffect } from 'react';
@@ -19,9 +26,7 @@ import {
 import {
   APP_SIDEBAR_OPEN,
   appSidebarFloatingAtom,
-  appSidebarOpenAtom,
   appSidebarResizingAtom,
-  appSidebarWidthAtom,
 } from './index.jotai';
 import { SidebarHeader } from './sidebar-header';
 
@@ -38,13 +43,20 @@ export type History = {
 const MAX_WIDTH = 480;
 const MIN_WIDTH = 256;
 
+export const LEFT_SIDEBAR_WIDTH_KEY =
+  'app:settings:leftsidebar:sidebar-state:width';
+export const LEFT_SIDEBAR_OPEN_KEY =
+  'app:settings:leftsidebar:sidebar-state:open';
+
 export function AppSidebar({
   children,
   clientBorder,
   translucentUI,
 }: AppSidebarProps): ReactElement {
-  const [open, setOpen] = useAtom(appSidebarOpenAtom);
-  const [width, setWidth] = useAtom(appSidebarWidthAtom);
+  const globalState = useService(GlobalStateService).globalState;
+  const [open, setOpen] = useGlobalState(LEFT_SIDEBAR_OPEN_KEY, true);
+  const [width, setWidth] = useGlobalState(LEFT_SIDEBAR_WIDTH_KEY, 256);
+
   const [floating, setFloating] = useAtom(appSidebarFloatingAtom);
   const [resizing, setResizing] = useAtom(appSidebarResizingAtom);
 
@@ -63,7 +75,7 @@ export function AppSidebar({
       ) {
         // give the initial value,
         // so that the sidebar can be closed on mobile by default
-        setOpen(!isFloating);
+        globalState.set(LEFT_SIDEBAR_OPEN_KEY, !isFloating);
       }
       setFloating(isFloating);
     }
@@ -73,7 +85,7 @@ export function AppSidebar({
     return () => {
       window.removeEventListener('resize', dOnResize);
     };
-  }, [open, setFloating, setOpen, width]);
+  }, [globalState, open, setFloating, width]);
 
   const isMacosDesktop = environment.isDesktop && environment.isMacOs;
   const hasRightBorder =
@@ -119,7 +131,7 @@ export function AppSidebar({
 }
 
 export const AppSidebarFallback = (): ReactElement | null => {
-  const width = useAtomValue(appSidebarWidthAtom);
+  const width = useGlobalStateValue(LEFT_SIDEBAR_WIDTH_KEY, 256);
 
   const currentWorkspace = useServiceOptional(WorkspaceService);
   return (
@@ -159,4 +171,4 @@ export * from './menu-item';
 export * from './quick-search-input';
 export * from './sidebar-containers';
 export * from './sidebar-header';
-export { appSidebarFloatingAtom, appSidebarOpenAtom, appSidebarResizingAtom };
+export { appSidebarFloatingAtom, appSidebarResizingAtom };

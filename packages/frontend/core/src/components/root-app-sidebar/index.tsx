@@ -10,8 +10,11 @@ import { FolderIcon, SettingsIcon } from '@blocksuite/icons/rc';
 import type { Doc } from '@blocksuite/store';
 import { useDroppable } from '@dnd-kit/core';
 import type { Workspace } from '@toeverything/infra';
-import { useLiveData, useService } from '@toeverything/infra';
-import { useAtomValue } from 'jotai';
+import {
+  useGlobalStateValue,
+  useLiveData,
+  useService,
+} from '@toeverything/infra';
 import { nanoid } from 'nanoid';
 import type { HTMLAttributes, ReactElement } from 'react';
 import { forwardRef, memo, useCallback, useEffect } from 'react';
@@ -23,8 +26,8 @@ import {
   AddPageButton,
   AppDownloadButton,
   AppSidebar,
-  appSidebarOpenAtom,
   CategoryDivider,
+  LEFT_SIDEBAR_OPEN_KEY,
   MenuItem,
   MenuLinkItem,
   QuickSearchInput,
@@ -133,7 +136,7 @@ export const RootAppSidebar = memo(
       return;
     }, [onClickNewPage]);
 
-    const sidebarOpen = useAtomValue(appSidebarOpenAtom);
+    const sidebarOpen = useGlobalStateValue(LEFT_SIDEBAR_OPEN_KEY, true);
     useEffect(() => {
       if (environment.isDesktop) {
         apis?.ui.handleSidebarVisibilityChange(sidebarOpen).catch(err => {
