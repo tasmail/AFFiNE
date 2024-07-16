@@ -62,7 +62,6 @@ export const InfoModal = ({
     <Modal
       contentOptions={{
         className: styles.container,
-        'aria-describedby': undefined,
       }}
       open={open}
       onOpenChange={onOpenChange}

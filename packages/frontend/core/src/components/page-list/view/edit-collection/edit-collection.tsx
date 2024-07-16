@@ -23,7 +23,6 @@ export interface EditCollectionModalProps {
 }
 
 const contentOptions: DialogContentProps = {
-  'aria-describedby': undefined,
   style: {
     padding: 0,
     maxWidth: 944,

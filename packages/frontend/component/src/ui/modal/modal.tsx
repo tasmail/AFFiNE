@@ -142,6 +142,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
                 }),
                 ...contentStyle,
               }}
+              {...(description ? {} : { 'aria-describedby': undefined })}
               {...otherContentOptions}
               ref={ref}
             >

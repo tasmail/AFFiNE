@@ -30,7 +30,6 @@ export const useSelectPage = ({
         height="80%"
         overlayOptions={{ style: { backgroundColor: 'transparent' } }}
         contentOptions={{
-          'aria-describedby': undefined,
           style: {
             padding: 0,
             transform: 'translateY(16px)',
