@@ -53,6 +53,10 @@ export const router = _createBrowserRouter(
         },
       ],
     },
+    {
+      path: '/setup',
+      lazy: () => import('./modules/setup'),
+    },
   ],
   {
     future: {
