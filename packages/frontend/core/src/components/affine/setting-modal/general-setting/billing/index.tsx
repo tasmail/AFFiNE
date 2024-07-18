@@ -32,7 +32,7 @@ import {
 import { useMutation } from '../../../../../hooks/use-mutation';
 import { useQuery } from '../../../../../hooks/use-query';
 import { AuthService, SubscriptionService } from '../../../../../modules/cloud';
-import { mixpanel, popupWindow } from '../../../../../utils';
+import { mixpanel, mixpanelTrack, popupWindow } from '../../../../../utils';
 import { SWRErrorBoundary } from '../../../../pure/swr-error-bundary';
 import { CancelAction, ResumeAction } from '../plans/actions';
 import { AICancel, AIResume, AISubscribe } from '../plans/ai/actions';
@@ -236,19 +236,13 @@ const SubscriptionSettings = () => {
               </SettingRow>
             ) : (
               <CancelAction
+                module="billing subscription list"
                 open={openCancelModal}
                 onOpenChange={setOpenCancelModal}
               >
                 <SettingRow
                   style={{ cursor: 'pointer' }}
                   onClick={() => {
-                    mixpanel.track('PlanChangeStarted', {
-                      segment: 'settings panel',
-                      module: 'billing subscription list',
-                      control: 'plan cancel action',
-                      type: proSubscription.plan,
-                      category: proSubscription.recurring,
-                    });
                     setOpenCancelModal(true);
                   }}
                   className="dangerous-setting"
@@ -402,9 +396,15 @@ const AIPlanCard = ({ onClick }: { onClick: () => void }) => {
         {price?.yearlyAmount ? (
           subscription ? (
             subscription.canceledAt ? (
-              <AIResume className={styles.planAction} />
+              <AIResume
+                module="billing subscription list"
+                className={styles.planAction}
+              />
             ) : (
-              <AICancel className={styles.planAction} />
+              <AICancel
+                module="billing subscription list"
+                className={styles.planAction}
+              />
             )
           ) : (
             <AISubscribe className={styles.planAction}>
@@ -475,13 +475,17 @@ const ResumeSubscription = () => {
   const subscription = useService(SubscriptionService).subscription;
   const handleClick = useCallback(() => {
     setOpen(true);
-    mixpanel.track('PlanChangeStarted', {
-      segment: 'settings panel',
-      module: 'pricing plan list',
-      control: 'plan resume action',
-      type: subscription.pro$.value?.plan,
-      category: subscription.pro$.value?.recurring,
-    });
+    const type = subscription.pro$.value?.plan;
+    const category = subscription.pro$.value?.recurring;
+    if (type && category) {
+      mixpanelTrack('PlanChangeStarted', {
+        segment: 'settings panel',
+        module: 'pricing plan list',
+        control: 'paying',
+        type,
+        category,
+      });
+    }
   }, [subscription.pro$.value?.plan, subscription.pro$.value?.recurring]);
 
   return (
