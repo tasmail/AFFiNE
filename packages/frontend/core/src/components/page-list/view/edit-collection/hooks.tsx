@@ -1,5 +1,6 @@
 import { Modal } from '@affine/component';
-import { useCallback, useState } from 'react';
+import { useScopeRootComponents } from '@toeverything/infra';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { AllPageListConfig } from './edit-collection';
 import { SelectPage } from './select-page';
@@ -15,8 +16,11 @@ export const useSelectPage = ({
   const close = useCallback(() => {
     onChange(undefined);
   }, []);
-  return {
-    node: (
+
+  const { add } = useScopeRootComponents('select-page-modal');
+
+  useEffect(() => {
+    return add(
       <Modal
         open={!!value}
         onOpenChange={close}
@@ -42,16 +46,22 @@ export const useSelectPage = ({
           />
         ) : null}
       </Modal>
+    );
+  }, [allPageListConfig, close, add, value]);
+
+  return {
+    open: useCallback(
+      (init: string[]): Promise<string[]> =>
+        new Promise<string[]>(res => {
+          onChange({
+            init,
+            onConfirm: list => {
+              close();
+              res(list);
+            },
+          });
+        }),
+      [close]
     ),
-    open: (init: string[]): Promise<string[]> =>
-      new Promise<string[]>(res => {
-        onChange({
-          init,
-          onConfirm: list => {
-            close();
-            res(list);
-          },
-        });
-      }),
   };
 };

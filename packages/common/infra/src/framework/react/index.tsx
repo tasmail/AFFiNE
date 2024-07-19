@@ -4,6 +4,9 @@ import type { FrameworkProvider, Scope, Service } from '../core';
 import { ComponentNotFoundError, Framework } from '../core';
 import { parseIdentifier } from '../core/identifier';
 import type { GeneralIdentifier, IdentifierType, Type } from '../core/types';
+import { ScopeRootComponents } from './scope-root-components';
+
+export { useScopeRootComponents } from './scope-root-components';
 
 export const FrameworkStackContext = React.createContext<FrameworkProvider[]>([
   Framework.EMPTY.provider(),
@@ -126,7 +129,7 @@ export const FrameworkScope = ({
 
   return (
     <FrameworkStackContext.Provider value={nextStack}>
-      {children}
+      <ScopeRootComponents>{children}</ScopeRootComponents>
     </FrameworkStackContext.Provider>
   );
 };
