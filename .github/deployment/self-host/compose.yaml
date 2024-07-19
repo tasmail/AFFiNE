@@ -1,62 +1,127 @@
 services:
+  proxy:
+    image: jwilder/nginx-proxy:alpine
+    labels:
+      - "com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy=true"
+    container_name: nginx-proxy
+    networks:
+      - nginx_proxy_network
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - nginx_etc_volume:/etc/nginx:rw
+      - nginx_html_volume:/usr/share/nginx/html:rw
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    restart: unless-stopped
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: letsencrypt-nginx-proxy-companion
+    depends_on:
+      - proxy
+    networks:
+      - nginx_proxy_network
+    volumes:
+      - nginx_etc_volume:/etc/nginx:rw
+      - nginx_html_volume:/usr/share/nginx/html:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+  
   affine:
     image: ghcr.io/toeverything/affine-graphql:stable
     container_name: affine_selfhosted
+    networks:
+      - nginx_proxy_network
+      - affine_network
     command:
       ['sh', '-c', 'node ./scripts/self-host-predeploy && node ./dist/index.js']
-    ports:
-      - '3010:3010'
-      - '5555:5555'
+    # ports:
+    #   - '3010:3010'
+    #   - '5555:5555'
     depends_on:
+      proxy:
+        condition: service_healthy
+      letsencrypt:
+        condition: service_healthy
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
     volumes:
       # custom configurations
-      - ~/.affine/self-host/config:/root/.affine/config
+      - ${AFFINE_HOST_PATH}/config:/root/.affine/config
       # blob storage
-      - ~/.affine/self-host/storage:/root/.affine/storage
+      - ${AFFINE_HOST_PATH}/storage:/root/.affine/storage
     logging:
       driver: 'json-file'
       options:
         max-size: '1000m'
     restart: unless-stopped
     environment:
+      - VIRTUAL_HOST=${AFFINE_SERVER_HOST}
+      - VIRTUAL_PORT=${AFFINE_SERVER_PORT}
+      - LETSENCRYPT_HOST=${AFFINE_SERVER_HOST}
+      - LETSENCRYPT_EMAIL=${AFFINE_LETSENCRYPT_EMAIL}
       - NODE_OPTIONS="--import=./scripts/register.js"
       - AFFINE_CONFIG_PATH=/root/.affine/config
       - REDIS_SERVER_HOST=redis
-      - DATABASE_URL=postgres://affine:affine@postgres:5432/affine
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - NODE_ENV=production
       - AFFINE_ADMIN_EMAIL=${AFFINE_ADMIN_EMAIL}
       - AFFINE_ADMIN_PASSWORD=${AFFINE_ADMIN_PASSWORD}
       # Telemetry allows us to collect data on how you use the affine. This data will helps us improve the app and provide better features.
       # Uncomment next line if you wish to quit telemetry.
       # - TELEMETRY_ENABLE=false
+  
   redis:
     image: redis
     container_name: affine_redis
     restart: unless-stopped
+    networks:
+      - affine_network
     volumes:
-      - ~/.affine/self-host/redis:/data
+      - ${AFFINE_HOST_PATH}/redis:/data
     healthcheck:
       test: ['CMD', 'redis-cli', '--raw', 'incr', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
+  
   postgres:
     image: postgres
     container_name: affine_postgres
     restart: unless-stopped
+    networks:
+      - affine_network
     volumes:
-      - ~/.affine/self-host/postgres:/var/lib/postgresql/data
+      - ${AFFINE_HOST_PATH}/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U affine']
       interval: 10s
       timeout: 5s
       retries: 5
     environment:
-      POSTGRES_USER: affine
-      POSTGRES_PASSWORD: affine
-      POSTGRES_DB: affine
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       PGDATA: /var/lib/postgresql/data/pgdata
+
+networks:
+  nginx_proxy_network:
+  affine_network:
+
+volumes:
+  nginx_etc_volume:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /etc/nginx
+  
+  nginx_html_volume:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /usr/share/nginx/html
