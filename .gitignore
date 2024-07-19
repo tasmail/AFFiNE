@@ -7,6 +7,9 @@
 !.yarn/sdks
 .yarn/versions
 
+.env
+.affine-data
+
 # compiled output
 *dist
 /tmp
